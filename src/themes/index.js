@@ -10,10 +10,12 @@ const commonThemeContent = {
 		positive: "#23D160",
 		neutral: "#2F80ED",
 		important: "#FE3E46",
+		warning: "#f2c100",
 	},
 };
 
 const darkTheme = {
+	...commonThemeContent,
 	theme: "dark",
 	palette: {
 		bg: {
@@ -30,10 +32,10 @@ const darkTheme = {
 			subtitle: "#787878",
 		},
 	},
-	...commonThemeContent,
 };
 
 const lightTheme = {
+	...commonThemeContent,
 	theme: "light",
 	palette: {
 		bg: {
@@ -50,7 +52,6 @@ const lightTheme = {
 			subtitle: "#4C566A",
 		},
 	},
-	...commonThemeContent,
 };
 
 export { darkTheme, lightTheme };

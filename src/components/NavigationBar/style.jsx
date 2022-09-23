@@ -1,17 +1,18 @@
 import { NavLink } from "react-router-dom";
-import SHubLogo from "../../assets/s-hub_logo.jsx";
 import styled from "styled-components";
+import SHubLogo from "../../assets/s-hub_logo.jsx";
 
 export const Section = styled.div`
 	position: sticky;
+	top: 0;
 	display: block;
 	background-color: ${({ theme }) => theme.palette.bg[100]};
 `;
 
 export const Container = styled.div`
 	display: flex;
-	flex-direction: row;
 	align-items: center;
+	justify-content: space-between;
 	gap: 1rem;
 	margin-left: auto;
 	margin-right: auto;
