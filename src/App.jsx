@@ -15,7 +15,7 @@ function App() {
 				<NavBar />
 				<Routes>
 					<Route path="/" element={<Explore />} />
-					<Route path="/signup" element={<Auth />} />
+					<Route path="/signup/*" element={<Auth />} />
 					<Route path="/signup/redirect" element={<Redirector />} />
 					{/* <Route path="/about" element={<About />} /> */}
 					{/* <Route path="/explore" element={<Explore />} /> */}

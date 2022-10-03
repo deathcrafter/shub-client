@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { AiOutlineLoading } from "react-icons/ai";
 import { FaDiscord, FaGithub, FaGoogle } from "react-icons/fa";
 import { FiAlertCircle } from "react-icons/fi";
+import { Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import ReactTooltip from "react-tooltip";
-import Swal from "sweetalert2";
 import validator from "validator";
 import LogoImg from "../../assets/s-hub_logo_color.svg";
 import config from "../../config";
@@ -18,7 +18,15 @@ import {
 	Text,
 } from "./style";
 
+const generateState = (len) => {
+	const arr = new Uint8Array((len || 40) / 2);
+	window.crypto.getRandomValues(arr);
+	const str = Array.from(arr, (dec) => dec.toString(16).padStart(2, "0")).join("");
+	window.localStorage.setItem("currState", str);
+	return str;
+};
 function SignUp(props) {
+	const navigate = useNavigate();
 	return (
 		<Section>
 			<Container>
@@ -31,14 +39,32 @@ function SignUp(props) {
 					colors={{ bg: "#5865F2", text: "#fefefe" }}
 					icon={<FaDiscord size={"1.6rem"} color="#fff" />}
 					text="Discord"
-					onClick={() => props.onNext("discord")}
+					onClick={() =>
+						window.location.assign(
+							"https://discord.com/oauth2/authorize?response_type=code&client_id=" +
+								config.ds_app_client +
+								"&scope=identify%20email&redirect_uri=" +
+								encodeURIComponent(config.redirect_uri) +
+								"&state=ds" +
+								generateState(16)
+						)
+					}
 				/>
 				<SignUpButton
 					full={true}
 					colors={{ bg: "#21262e", text: "#fefefe" }}
 					icon={<FaGithub size={"1.6rem"} color="#fff" />}
 					text="GitHub"
-					onClick={() => props.onNext("github")}
+					onClick={() =>
+						window.location.assign(
+							"https://github.com/login/oauth/authorize?client_id=" +
+								config.gh_app_client +
+								"&scope=read:user%20user:email&redirect_uri=" +
+								encodeURIComponent(config.redirect_uri) +
+								"&state=gh" +
+								generateState(16)
+						)
+					}
 				/>
 				<SignUpButton
 					full={true}
@@ -51,70 +77,45 @@ function SignUp(props) {
 					full={true}
 					colors={{ bg: "#fefefe", text: "#21262e", border: "#21262e" }}
 					text="Email"
-					onClick={() => props.onNext("email")}
+					onClick={() => navigate("/signup/email")}
 				/>
 			</Container>
 		</Section>
 	);
 }
-
-const generateId = (len) => {
-	var arr = new Uint8Array((len || 40) / 2);
-	window.crypto.getRandomValues(arr);
-	return Array.from(arr, (dec) => dec.toString(16).padStart(2, "0")).join("");
-};
-
 function OAuth(props) {
+	const navigate = useNavigate();
+	const [searchParams, setSearchParams] = useSearchParams();
 	const processOauthCode = async (code, provider) => {
 		axios
-			.post(config.api_url + "/auth/" + provider, { code: code })
+			.post(config.api_url + "/auth/oauth", { code: code, type: provider })
 			.then(({ data }) => {
 				if (data.success) {
 					if (data.message == "logged_in") {
 						window.location = "/";
 					} else {
-						props.onNext(data.key);
+						navigate("/signup/username", { state: { key: data.key } });
 					}
 				}
 			})
 			.catch((e) => {
-				alert("Please check your connection!");
-				window.location.reload(false);
+				console.log(e);
 			});
 	};
-
 	useEffect(() => {
-		const provider = props.provider;
-		const raw_state = generateId(16);
-		axios.post(config.api_url + "/auth/auth-uri", { provider: provider }).then(({ data }) => {
-			if (data.success) {
-				const authUri = data.uri + "&state=" + raw_state;
-				const popup = open(authUri, "_blank", "popup,width=600,height=500");
-				const timer = setInterval(() => {
-					if (popup.closed) {
-						dispatchEvent(
-							new CustomEvent(`finishAuth${raw_state}`, {
-								detail: { success: false, error: "authorization_terminated" },
-							})
-						);
-					}
-				}, 500);
-				const authFinishHandler = (e) => {
-					clearInterval(timer);
-					popup.close();
-					removeEventListener(`finishAuth${raw_state}`, authFinishHandler);
-					const { success, code, state, error } = e.detail;
-					if (success && state == raw_state) {
-						processOauthCode(code, provider);
-					} else {
-						props.onAuthError(error);
-					}
-				};
-				addEventListener(`finishAuth${raw_state}`, authFinishHandler);
-			} else {
-				props.onAuthError(data.message);
+		if (searchParams.has("code") && searchParams.has("state")) {
+			const code = searchParams.get("code");
+			const state = searchParams.get("state");
+			if (state.substring(2) != window.localStorage.getItem("currState")) {
+				return;
 			}
-		});
+			const provider = state.startsWith("ds")
+				? "discord"
+				: state.startsWith("gh")
+				? "github"
+				: "google";
+			processOauthCode(code, provider);
+		}
 	}, []);
 	return (
 		<Section>
@@ -126,7 +127,6 @@ function OAuth(props) {
 		</Section>
 	);
 }
-
 function Email(props) {
 	const [validity, setValidity] = useState({
 		email: { value: "", valid: false },
@@ -134,6 +134,7 @@ function Email(props) {
 		confirm: { value: "", valid: false },
 	});
 	const [loading, setLoading] = useState(false);
+	const navigate = useNavigate();
 
 	const handleSubmit = async (e) => {
 		if (validity.email.valid && validity.password.valid && validity.confirm.valid) {
@@ -148,15 +149,12 @@ function Email(props) {
 				})
 				.then(({ data }) => {
 					if (data.success) {
-						props.onNext(data.key);
+						navigate("/signup/email/verify", { state: { key: data.key } });
 					} else {
-						props.onAuthError(data.message);
+						window.location.reload(false);
 					}
 				})
-				.catch((e) => {
-					alert("Please check your connection!");
-					window.location.reload(false);
-				})
+				.catch((e) => {})
 				.finally(() => {
 					setLoading((_) => false);
 				});
@@ -164,17 +162,6 @@ function Email(props) {
 			console.log("Invalid input!");
 		}
 	};
-
-	// useEffect(() => {
-	// 	var timeout = undefined;
-	// 	window.addEventListener("resize", (e) => {
-	// 		clearTimeout(timeout);
-	// 		timeout = setTimeout(() => {
-	// 			console.log("rebuilding tool tip");
-	// 			ReactTooltip.rebuild();
-	// 		}, 250);
-	// 	});
-	// });
 
 	return (
 		<Section>
@@ -324,10 +311,83 @@ function Email(props) {
 		</Section>
 	);
 }
+function VerifyEmail(props) {
+	const location = useLocation();
+	const [data, setData] = useState({ email: "", key: "" });
+	const otp = useRef("");
+	const [loading, setLoading] = useState(false);
+	const navigate = useNavigate();
 
+	const handleSubmit = (e) => {
+		if (!(data.key && otp.current.length == 6)) {
+			console.log("Key or otp invalid!");
+			return;
+		}
+		setLoading((_) => true);
+		axios
+			.post(config.api_url + "/auth/email/verify", { key: data.key, otp: otp.current })
+			.then((res) => {
+				if (res.data.success) {
+					navigate("/signup/username", { state: { key: data.key } });
+				} else {
+					console.log(res.data.message);
+				}
+			})
+			.catch((e) => {
+				console.log(e);
+			})
+			.finally(() => {
+				setLoading((_) => false);
+			});
+	};
+
+	useEffect(() => {
+		const key = location.state ? location.state.key : false;
+		if (!key) {
+			console.log("No key!");
+			return;
+		}
+		axios.post(config.api_url + "/auth/key", { key: key }).then(({ data }) => {
+			setData((_) => {
+				return { email: data.email, key: key };
+			});
+		});
+	}, []);
+	return (
+		<Section>
+			{data.email ? (
+				<Container>
+					<Text>Email</Text>
+					<InputTextContainer>
+						<InputText value={data.email || "hello@world.com"} disabled />
+					</InputTextContainer>
+					<Text>Enter OTP</Text>
+					<InputTextContainer>
+						<InputText
+							placeholder="OTP"
+							onChange={(e) => {
+								otp.current = e.target.value;
+							}}
+						/>
+					</InputTextContainer>
+					<SignUpButton
+						icon={loading ? <AiOutlineLoading /> : <></>}
+						onClick={handleSubmit}
+						colors={{ bg: "#23D160", text: "#fefefe" }}
+						style={{ cursor: loading ? "not-allowed" : "pointer" }}
+						text={loading ? "" : "Next"}
+					/>
+				</Container>
+			) : (
+				<Text>Loading...</Text>
+			)}
+		</Section>
+	);
+}
 function Username(props) {
+	const location = useLocation();
+	const data = useRef({ key: "", username: "" });
 	const [errorMessage, setErrorMessage] = useState("");
-	const username = useRef("");
 	const [loading, setLoading] = useState(false);
 	const handleSubmit = (e) => {
 		if (loading) {
@@ -336,14 +396,13 @@ function Username(props) {
 			setLoading((_) => true);
 			axios
 				.post(config.api_url + "/auth/signup", {
-					key: props.tempkey,
-					username: username.current,
+					...data.current,
 				})
 				.then(({ data }) => {
 					if (data.success) {
 						window.location = "/";
 					} else {
-						props.onAuthError(data.message);
+						console.log(data.message);
 					}
 				})
 				.catch((e) => {
@@ -361,7 +420,10 @@ function Username(props) {
 		controller.abort();
 		timer = setTimeout(() => {
 			controller = new AbortController();
-			if (!username.current || !validator.matches(username.current, "[a-zA-Z0-9_.-]{3,8}")) {
+			if (
+				!data.current.username ||
+				!validator.matches(data.current.username, "[a-zA-Z0-9_.-]{3,8}")
+			) {
 				setErrorMessage(
 					(_) =>
 						"Must be between 3 and 8 characters. Only alphanumeric characters, ., _, - allowed."
@@ -373,7 +435,7 @@ function Username(props) {
 			axios
 				.post(
 					config.api_url + "/auth/validate-username",
-					{ username: username.current },
+					{ username: data.current.username },
 					{ signal: controller.signal }
 				)
 				.then(({ data }) => {
@@ -393,6 +455,15 @@ function Username(props) {
 				});
 		}, 500);
 	};
+	useEffect(() => {
+		const key = location.state ? location.state.key : false;
+		if (!key) {
+			console.log("No key!");
+			return;
+		} else {
+			data.current.key = key;
+		}
+	});
 	return (
 		<Section>
 			<Container>
@@ -405,7 +476,7 @@ function Username(props) {
 						placeholder="Username"
 						pattern="[a-zA-Z0-9_\.\-]"
 						onChange={(e) => {
-							username.current = e.target.value;
+							data.current.username = e.target.value;
 							checkUserName(e.target);
 						}}
 					/>
@@ -459,48 +530,13 @@ function Username(props) {
 }
 
 export default function Auth(props) {
-	const [authType, setAuthType] = useState("");
-	const tempKey = useRef("");
-	const setTempKey = (func) => {
-		tempKey.current = func(tempKey.current);
-	};
-	const errorHandler = (error) => {
-		Swal.fire("Sign up error", error || "unknown_error", "error");
-		setAuthType((_) => "");
-	};
-	let component;
-	if (authType) {
-		switch (authType) {
-			case "username":
-				component = <Username tempkey={tempKey.current} onAuthError={errorHandler} />;
-				break;
-			case "email":
-				component = (
-					<Email
-						onNext={(key) => {
-							setTempKey((_) => key);
-							setAuthType((_) => "username");
-						}}
-						onAuthError={errorHandler}
-					/>
-				);
-				break;
-			default:
-				component = (
-					<OAuth
-						provider={authType}
-						onNext={(key) => {
-							setTempKey((_) => key);
-							setAuthType((_) => "username");
-						}}
-						onAuthError={errorHandler}
-					/>
-				);
-				break;
-		}
-	} else {
-		component = <SignUp onNext={(type) => setAuthType((_) => type)} />;
-	}
-
-	return component;
+	return (
+		<Routes>
+			<Route path="/" element={<SignUp />} />
+			<Route path="/email" element={<Email />} />
+			<Route path="/email/verify" element={<VerifyEmail />} />
+			<Route path="/oauth" element={<OAuth />} />
+			<Route path="/username" element={<Username />} />
+		</Routes>
+	);
 }
